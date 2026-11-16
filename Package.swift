@@ -6,7 +6,6 @@ let package = Package(
     platforms: [.iOS(.v16)],
     products: [.library(name: "CinemaCompanion", targets: ["CinemaCompanion"])],
     targets: [
-        .target(name: "CinemaCompanion"),
-        .testTarget(name: "CinemaCompanionTests", dependencies: ["CinemaCompanion"])
+        .target(name: "CinemaCompanion")
     ]
 )

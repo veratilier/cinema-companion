@@ -18,6 +18,66 @@ COOKIES = os.environ.get('CINEMA_BILIBILI_COOKIES', '')
 LOCK = threading.Lock()
 TTL = 6 * 3600
 LIMIT = 2 * 1024**3
+CLEANUP_INTERVAL = 30 * 60
+_cleanup_guard = threading.Lock()
+_cleanup_thread = None
+_cleanup_stop = threading.Event()
+
+def cleanup_expired(now=None):
+    """Remove expired job directories, skipping while an import is active."""
+    if not LOCK.acquire(blocking=False):
+        return 0
+    try:
+        if not ROOT.is_dir():
+            return 0
+        current = time.time() if now is None else now
+        removed = 0
+        for path in ROOT.iterdir():
+            if not re.fullmatch(r'[a-f0-9]{32}', path.name) or path.is_symlink() or not path.is_dir():
+                continue
+            try:
+                try:
+                    state = json.loads((path / 'state.json').read_text())
+                    created = float(state['created'])
+                    if not 0 < created <= current:
+                        continue
+                except (OSError, ValueError, KeyError, TypeError):
+                    created = path.stat().st_mtime
+                if current - created >= TTL:
+                    shutil.rmtree(path)
+                    removed += 1
+            except OSError:
+                continue
+        return removed
+    finally:
+        LOCK.release()
+
+def start_cleanup_worker():
+    """Start one daemon per process. Hosts may call this at service startup."""
+    global _cleanup_thread
+    with _cleanup_guard:
+        if _cleanup_thread is not None and _cleanup_thread.is_alive():
+            return
+        _cleanup_stop.clear()
+        def run():
+            while not _cleanup_stop.wait(CLEANUP_INTERVAL):
+                try:
+                    cleanup_expired()
+                except OSError:
+                    pass
+        _cleanup_thread = threading.Thread(target=run, name='cinema-cache-cleanup', daemon=True)
+        _cleanup_thread.start()
+
+def stop_cleanup_worker():
+    """Stop the worker on service shutdown."""
+    global _cleanup_thread
+    with _cleanup_guard:
+        _cleanup_stop.set()
+        thread = _cleanup_thread
+        if thread is not None:
+            thread.join(timeout=5)
+        if thread is None or not thread.is_alive():
+            _cleanup_thread = None
 
 def canonical(value):
     if not isinstance(value, str) or len(value) > 2048:
@@ -63,8 +123,7 @@ def prepare(ident, url):
         command = [os.environ.get('CINEMA_YTDLP', 'yt-dlp'), '--ignore-config', '--no-playlist', '--playlist-items', '1',
                    '--no-warnings', '--quiet', '--no-progress', '--socket-timeout', '20', '--retries', '1',
                    '--max-filesize', '1G', '-f', 'bv[vcodec^=avc1][height<=720]+ba[ext=m4a]/b[ext=mp4]',
-                   '--merge-output-format', 'mp4', '--postprocessor-args', 'Merger+ffmpeg_o:-movflags +faststart', '--write-info-json', '--write-subs', '--sub-langs', 'zh.*,en.*',
-                   '--sub-format', 'srt/vtt/best', '-o', str(path / 'media.%(ext)s')]
+                   '--merge-output-format', 'mp4', '--postprocessor-args', 'Merger+ffmpeg_o:-movflags +faststart', '--write-info-json', '-o', str(path / 'media.%(ext)s')]
         if COOKIES:
             if not Path(COOKIES).is_file():
                 raise RuntimeError('登录态文件未配置好，请在 VPS 检查。')
@@ -81,21 +140,7 @@ def prepare(ident, url):
             raise RuntimeError('未能获取可播放视频，请检查 B 站登录态、观看权限或更新 yt-dlp。')
         info = json.loads((path / 'media.info.json').read_text())
         state.update(status='ready', title=str(info.get('title') or 'B 站视频')[:300])
-        cues = []
-        for sub in sorted(path.glob('media.*.json')):
-            if sub.name == 'media.info.json' or sub.stat().st_size > 2_000_000:
-                continue
-            try:
-                for row in json.loads(sub.read_text()).get('body', []):
-                    cues.append({'start': float(row['from']), 'end': float(row['to']), 'text': str(row['content'])[:2000]})
-                if cues: break
-            except (ValueError, KeyError, TypeError): pass
-        state['cues'] = cues[:20000]
-        for sub in sorted([*path.glob('media.*.srt'), *path.glob('media.*.vtt')]):
-            if sub.stat().st_size <= 2_000_000:
-                state['subtitleText'] = sub.read_text(encoding='utf-8')
-                break
-        # Remove metadata containing upstream signed URLs; retain only the playable file and text cues.
+        # Remove metadata containing upstream signed URLs; retain only the playable file.
         for f in path.iterdir():
             if f.is_file() and f.name not in {'media.mp4', 'state.json'}: f.unlink()
     except Exception as exc:
@@ -112,6 +157,8 @@ def prepare(ident, url):
 
 def start(url):
     url = canonical(url)
+    start_cleanup_worker()
+    cleanup_expired()
     source_hash = hashlib.sha256(url.encode()).hexdigest()
     # Same private source within the existing TTL joins its import or reuses its file.
     for state_file in ROOT.glob('*/state.json'):
@@ -127,9 +174,6 @@ def start(url):
         raise ValueError('另一个视频正在准备，请稍后再试。')
     try:
         ROOT.mkdir(parents=True, exist_ok=True, mode=0o700)
-        for p in ROOT.iterdir():
-            if p.is_dir() and re.fullmatch('[a-f0-9]{32}', p.name) and time.time() - p.stat().st_mtime > TTL:
-                shutil.rmtree(p)
         if sum(f.stat().st_size for f in ROOT.glob('*/*') if f.is_file()) > 4 * 1024**3:
             raise ValueError('临时视频缓存已满，过期清理后再试。')
         ident = secrets.token_hex(16)

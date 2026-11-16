@@ -1,17 +1,14 @@
-import { formatTime, normalizeWatchInterval, parseSubtitles, subtitlesThrough } from "./lib.js";
+import { formatTime, normalizeWatchInterval } from "./lib.js";
 
 const byID = (id) => document.getElementById(id);
 const elements = {
   fileVideo: byID("file-video"),
-  fileSubtitles: byID("file-subtitles"),
   remoteUrl: byID("remote-url"),
   loadUrl: byID("load-url"),
   movie: byID("movie"),
   movieEmpty: byID("movie-empty"),
   movieTitle: byID("movie-title"),
   moviePosition: byID("movie-position"),
-  subtitleState: byID("subtitle-state"),
-  subtitleNow: byID("subtitle-now"),
   shareMovie: byID("share-movie"),
   screenStart: byID("screen-start"),
   screenStop: byID("screen-stop"),
@@ -38,7 +35,6 @@ const elements = {
 
 const state = {
   localURL: null,
-  cues: [],
   screenStream: null,
   previewURL: null,
   deferredInstall: null,
@@ -60,10 +56,6 @@ function setStatus(message, kind = "") {
 
 function setMovieSource(source, title) {
   stopAutoWatch("已停止");
-  state.cues = [];
-  elements.fileSubtitles.value = "";
-  elements.subtitleState.textContent = "未导入字幕";
-  elements.subtitleNow.textContent = "没有当前字幕";
   if (state.localURL) {
     URL.revokeObjectURL(state.localURL);
     state.localURL = null;
@@ -109,28 +101,8 @@ elements.loadUrl.addEventListener("click", () => {
   setStatus("影片地址已载入。", "success");
 });
 
-elements.fileSubtitles.addEventListener("change", async (event) => {
-  const [file] = event.target.files;
-  if (!file) return;
-  try {
-    state.cues = parseSubtitles(await file.text());
-    if (!state.cues.length) throw new Error("No readable subtitle cues found.");
-    elements.subtitleState.textContent = `已载入 ${state.cues.length} 条字幕`;
-    setStatus("字幕已载入", "success");
-    updatePlaybackState();
-  } catch (error) {
-    state.cues = [];
-    elements.subtitleState.textContent = "未导入字幕";
-    setStatus(error.message || "Unable to read subtitles.", "error");
-  }
-});
-
 function updatePlaybackState() {
   elements.moviePosition.textContent = formatTime(elements.movie.currentTime);
-  const current = state.cues.filter(
-    (cue) => cue.start <= elements.movie.currentTime && cue.end >= elements.movie.currentTime,
-  );
-  elements.subtitleNow.textContent = current.map((cue) => cue.text).join(" ") || "没有当前字幕";
 }
 
 elements.movie.addEventListener("timeupdate", updatePlaybackState);
@@ -201,7 +173,6 @@ async function share(source) {
       capturedAt: new Date().toISOString(),
       title: source === "movie" ? elements.movieTitle.textContent : null,
       position,
-      subtitles: source === "movie" ? subtitlesThrough(position, state.cues) : [],
     });
     setStatus(sent ? "画面已分享" : "画面已截取，尚未连接 AI。", sent ? "success" : "");
   } catch (error) {

@@ -33,14 +33,12 @@
       <div class="movie-actions">
         <label class="button primary">＋&nbsp; 选择影片<input id="file-video" type="file" accept="video/*" hidden /></label>
         <button id="toggle-url" class="button quiet" type="button" aria-expanded="false">导入链接</button>
-        <label class="button quiet subtitles-button">字幕<input id="file-subtitles" type="file" accept=".srt,.vtt,text/plain,text/vtt" hidden /></label>
       </div>
       <div class="url-loader" id="url-loader" hidden>
         <input id="remote-url" type="url" inputmode="url" placeholder="HTTPS 视频地址" autocomplete="off" aria-label="HTTPS 视频地址" />
         <button id="load-url" class="button quiet">载入</button>
       </div>
-      <div class="movie-info"><span id="movie-title">还没有选择影片</span><span id="subtitle-state">未导入字幕</span></div>
-      <span id="subtitle-now" class="sr-only">No active subtitle</span>
+      <div class="movie-info"><span id="movie-title">还没有选择影片</span></div>
     </section>
 
     <section class="mode" id="screen-panel" aria-label="屏幕共享" hidden>

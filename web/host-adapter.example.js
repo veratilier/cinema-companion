@@ -10,7 +10,6 @@ window.cinemaCompanionOnScene = async (scene) => {
       capturedAt: scene.capturedAt,
       title: scene.title,
       position: scene.position,
-      subtitles: scene.subtitles,
     }),
   );
 

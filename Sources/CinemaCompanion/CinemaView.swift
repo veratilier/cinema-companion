@@ -13,7 +13,6 @@ public struct SharedScene: Sendable {
     public let capturedAt: Date
     public let title: String?
     public let position: TimeInterval?
-    public let subtitles: [SubtitleCue]
 }
 
 /// A self-contained foreground cinema. Your app decides how to send each scene to its AI.
@@ -26,7 +25,6 @@ public struct CinemaView: View {
     @Environment(\.scenePhase) private var phase
     @State private var mode = 0
     @State private var picker = false
-    @State private var subtitlesPicker = false
     @State private var sending = false
     @State private var timedWatching = false
     @State private var intervalSeconds = 30
@@ -54,8 +52,6 @@ public struct CinemaView: View {
                     Section("Imported media") {
                         if movie.loaded { VideoPlayer(player: movie.player).frame(height: 220); Text(movie.title) }
                         Button(movie.loaded ? "Choose another video" : "Choose a video") { picker = true }
-                        Button("Import SRT or VTT subtitles") { subtitlesPicker = true }.disabled(!movie.loaded)
-                        if !movie.cues.isEmpty { Text("\(movie.cues.count) subtitle cues") }
                         Button("Share this scene") { Task { await shareMovie() } }.disabled(!movie.loaded || sending)
                     }
                 }
@@ -80,15 +76,6 @@ public struct CinemaView: View {
             }.navigationTitle("Cinema")
                 .fileImporter(isPresented: $picker, allowedContentTypes: [.movie, .video]) { result in
                     do { let url = try result.get(); timedWatching = false; try movie.open(url); error = "" } catch { self.error = error.localizedDescription }
-                }
-                .fileImporter(isPresented: $subtitlesPicker, allowedContentTypes: [.plainText, .data]) { result in
-                    do {
-                        let url = try result.get(); let access = url.startAccessingSecurityScopedResource()
-                        defer { if access { url.stopAccessingSecurityScopedResource() } }
-                        let cues = Subtitles.parse(try String(contentsOf: url, encoding: .utf8))
-                        guard !cues.isEmpty else { throw CinemaError("No readable subtitle cues found.") }
-                        movie.cues = cues; error = ""
-                    } catch { self.error = error.localizedDescription }
                 }
                 .task(id: timedWatching) {
                     guard timedWatching else { return }
@@ -115,7 +102,7 @@ public struct CinemaView: View {
     }
     private func shareScreen() async {
         guard let jpeg = screen.snapshot() else { error = "No recent frame is available yet."; return }
-        await deliver(SharedScene(source: .screen, jpeg: jpeg, capturedAt: Date(), title: nil, position: nil, subtitles: []))
+        await deliver(SharedScene(source: .screen, jpeg: jpeg, capturedAt: Date(), title: nil, position: nil))
     }
     private func shareMovie() async {
         do { await deliver(try await movie.scene()) } catch { self.error = error.localizedDescription }
@@ -142,7 +129,6 @@ private struct CinemaError: LocalizedError {
     let player = AVPlayer()
     @Published var loaded = false
     @Published var title = ""
-    @Published var cues: [SubtitleCue] = []
     private var scopedURL: URL?
     func open(_ url: URL) throws {
         close()
@@ -152,7 +138,7 @@ private struct CinemaError: LocalizedError {
     }
     func close() {
         player.pause(); player.replaceCurrentItem(with: nil)
-        scopedURL?.stopAccessingSecurityScopedResource(); scopedURL = nil; cues = []; loaded = false
+        scopedURL?.stopAccessingSecurityScopedResource(); scopedURL = nil; loaded = false
     }
     func scene() async throws -> SharedScene {
         guard let asset = player.currentItem?.asset else { throw CinemaError("Choose a video first.") }
@@ -163,7 +149,7 @@ private struct CinemaError: LocalizedError {
         let frame = try await generator.image(at: time)
         guard let jpeg = UIImage(cgImage: frame.image).jpegData(compressionQuality: 0.8) else { throw CinemaError("Unable to read this frame.") }
         let position = max(0, frame.actualTime.seconds)
-        return SharedScene(source: .movie, jpeg: jpeg, capturedAt: Date(), title: title, position: position, subtitles: Subtitles.through(position, cues: cues))
+        return SharedScene(source: .movie, jpeg: jpeg, capturedAt: Date(), title: title, position: position)
     }
 }
 #endif
