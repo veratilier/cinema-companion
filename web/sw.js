@@ -1,4 +1,4 @@
-const CACHE = "cinema-companion-pwa-v1";
+const CACHE = "cinema-companion-pwa-v2";
 const APP_SHELL = [
   "./",
   "./index.html",

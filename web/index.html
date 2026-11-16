@@ -77,6 +77,36 @@
         <p class="fineprint">Screen capture depends on the browser. iPhone and iPad web apps must not be presented as a replacement for a native ReplayKit broadcast extension.</p>
       </section>
 
+      <section class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Explicit opt-in</p>
+            <h2>Timed watching</h2>
+          </div>
+        </div>
+        <p class="note">Choose how often the foreground PWA shares a new frame. Manual remains the default, and only one timed source can run at once.</p>
+        <div class="timed-controls">
+          <label>
+            <span>Source</span>
+            <select id="auto-source">
+              <option value="movie">Movie</option>
+              <option value="screen">Shared screen</option>
+            </select>
+          </label>
+          <label>
+            <span>Interval</span>
+            <select id="auto-interval">
+              <option value="0">Manual only</option>
+              <option value="10">Every 10 seconds</option>
+              <option value="30">Every 30 seconds</option>
+              <option value="60">Every 1 minute</option>
+            </select>
+          </label>
+          <button id="auto-toggle" class="primary" disabled>Start timed watching</button>
+        </div>
+        <p id="auto-state" class="fineprint">Timed watching is off. Share a frame manually whenever you want.</p>
+      </section>
+
       <section class="card output-card">
         <div class="section-heading">
           <div>

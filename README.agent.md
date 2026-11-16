@@ -50,6 +50,8 @@
 
 点击分享后，PWA 生成最长边不超过 1280 像素的 JPEG `Blob`，构造 `{source, jpeg, capturedAt, title, position, subtitles}`，先显示本地预览，再调用可选的 `window.cinemaCompanionOnScene(scene)`。没有宿主回调时数据不会发送到网络。页面也会派发 `cinema-companion-scene` 事件，但宿主必须自行完成鉴权、上传、取消、错误处理和回复展示。
 
+定时陪看默认关闭，只接受 10、30、60 秒三个白名单间隔。用户必须选择 `movie` 或 `screen` 来源并单独点击开始；同一时间只能运行一个来源。定时循环使用串行 `setTimeout`，等待上一轮宿主回调结束后才安排下一轮，避免请求重叠。影片暂停时不重复发送同一时间点；切换影片、屏幕流结束、页面隐藏或离开时立即停止。
+
 屏幕共享通过能力检测后的 `navigator.mediaDevices.getDisplayMedia()` 提供，只能由用户操作触发。页面隐藏时主动停止轨道。浏览器是否提供屏幕或窗口、是否包含音频、切换 App 后是否继续以及捕获受保护媒体的结果均不受项目控制。尤其不得把 iPhone/iPad PWA 当作原生 ReplayKit Broadcast Upload Extension 的替代品。
 
 Service Worker 只缓存应用外壳，不缓存 object URL、用户字幕、视频、画面或 AI 回复。长期 AI 密钥和设备凭据不得出现在 PWA bundle、LocalStorage 或公开仓库中。

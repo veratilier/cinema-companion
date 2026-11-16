@@ -1,30 +1,33 @@
-import { formatTime, parseSubtitles, subtitlesThrough } from "./lib.js";
+import { formatTime, normalizeWatchInterval, parseSubtitles, subtitlesThrough } from "./lib.js";
 
-const elements = Object.fromEntries(
-  [
-    "file-video",
-    "file-subtitles",
-    "remote-url",
-    "load-url",
-    "movie",
-    "movie-empty",
-    "movie-title",
-    "movie-position",
-    "subtitle-state",
-    "subtitle-now",
-    "share-movie",
-    "screen-start",
-    "screen-stop",
-    "share-screen",
-    "screen-video",
-    "screen-note",
-    "capture-preview",
-    "scene-json",
-    "reply",
-    "status",
-    "install",
-  ].map((id) => [id, document.getElementById(id)]),
-);
+const byID = (id) => document.getElementById(id);
+const elements = {
+  fileVideo: byID("file-video"),
+  fileSubtitles: byID("file-subtitles"),
+  remoteUrl: byID("remote-url"),
+  loadUrl: byID("load-url"),
+  movie: byID("movie"),
+  movieEmpty: byID("movie-empty"),
+  movieTitle: byID("movie-title"),
+  moviePosition: byID("movie-position"),
+  subtitleState: byID("subtitle-state"),
+  subtitleNow: byID("subtitle-now"),
+  shareMovie: byID("share-movie"),
+  screenStart: byID("screen-start"),
+  screenStop: byID("screen-stop"),
+  shareScreen: byID("share-screen"),
+  screenVideo: byID("screen-video"),
+  screenNote: byID("screen-note"),
+  capturePreview: byID("capture-preview"),
+  sceneJson: byID("scene-json"),
+  reply: byID("reply"),
+  status: byID("status"),
+  install: byID("install"),
+  autoSource: byID("auto-source"),
+  autoInterval: byID("auto-interval"),
+  autoToggle: byID("auto-toggle"),
+  autoState: byID("auto-state"),
+};
 
 const state = {
   localURL: null,
@@ -32,6 +35,13 @@ const state = {
   screenStream: null,
   previewURL: null,
   deferredInstall: null,
+  autoWatch: {
+    active: false,
+    timer: null,
+    source: "movie",
+    interval: 0,
+    lastMoviePosition: null,
+  },
 };
 
 function setStatus(message, kind = "") {
@@ -40,6 +50,7 @@ function setStatus(message, kind = "") {
 }
 
 function setMovieSource(source, title) {
+  stopAutoWatch("Timed watching stopped because the movie changed.");
   if (state.localURL) {
     URL.revokeObjectURL(state.localURL);
     state.localURL = null;
@@ -55,7 +66,7 @@ function setMovieSource(source, title) {
   elements.shareMovie.disabled = false;
 }
 
-elements["file-video"].addEventListener("change", (event) => {
+elements.fileVideo.addEventListener("change", (event) => {
   const [file] = event.target.files;
   if (!file) return;
   const localURL = URL.createObjectURL(file);
@@ -85,7 +96,7 @@ elements.loadUrl.addEventListener("click", () => {
   setStatus("Remote media address loaded. Frame sharing also requires CORS permission from its server.", "success");
 });
 
-elements["file-subtitles"].addEventListener("change", async (event) => {
+elements.fileSubtitles.addEventListener("change", async (event) => {
   const [file] = event.target.files;
   if (!file) return;
   try {
@@ -190,6 +201,9 @@ elements.shareMovie.addEventListener("click", () => share("movie"));
 elements.shareScreen.addEventListener("click", () => share("screen"));
 
 function stopScreenShare() {
+  if (state.autoWatch.active && state.autoWatch.source === "screen") {
+    stopAutoWatch("Timed watching stopped because screen sharing ended.");
+  }
   state.screenStream?.getTracks().forEach((track) => track.stop());
   state.screenStream = null;
   elements.screenVideo.srcObject = null;
@@ -227,8 +241,96 @@ elements.screenStart.addEventListener("click", async () => {
 
 elements.screenStop.addEventListener("click", stopScreenShare);
 
+function updateAutoControls() {
+  const interval = normalizeWatchInterval(elements.autoInterval.value);
+  elements.autoToggle.disabled = !state.autoWatch.active && interval === 0;
+  elements.autoToggle.textContent = state.autoWatch.active ? "Stop timed watching" : "Start timed watching";
+  elements.autoSource.disabled = state.autoWatch.active;
+  elements.autoInterval.disabled = state.autoWatch.active;
+}
+
+function stopAutoWatch(message = "Timed watching is off. Share a frame manually whenever you want.") {
+  if (state.autoWatch.timer) clearTimeout(state.autoWatch.timer);
+  state.autoWatch.timer = null;
+  state.autoWatch.active = false;
+  state.autoWatch.lastMoviePosition = null;
+  if (elements.autoState) elements.autoState.textContent = message;
+  if (elements.autoToggle) updateAutoControls();
+}
+
+function scheduleAutoWatch() {
+  if (!state.autoWatch.active) return;
+  elements.autoState.textContent = `Watching ${state.autoWatch.source} every ${state.autoWatch.interval} seconds. Next scene is scheduled automatically.`;
+  state.autoWatch.timer = window.setTimeout(runAutoWatch, state.autoWatch.interval * 1000);
+}
+
+async function runAutoWatch() {
+  state.autoWatch.timer = null;
+  if (!state.autoWatch.active) return;
+  if (document.hidden) {
+    stopAutoWatch("Timed watching stopped when the PWA left the foreground.");
+    return;
+  }
+
+  const source = state.autoWatch.source;
+  if (source === "movie") {
+    if (!elements.movie.src || elements.movie.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      stopAutoWatch("Timed watching stopped because no playable movie is loaded.");
+      return;
+    }
+    const position = elements.movie.currentTime;
+    if (
+      state.autoWatch.lastMoviePosition !== null &&
+      Math.abs(position - state.autoWatch.lastMoviePosition) < 0.25
+    ) {
+      elements.autoState.textContent = "Waiting for movie playback before sharing another scene.";
+      scheduleAutoWatch();
+      return;
+    }
+    state.autoWatch.lastMoviePosition = position;
+  } else if (!state.screenStream) {
+    stopAutoWatch("Timed watching stopped because screen sharing is not active.");
+    return;
+  }
+
+  await share(source);
+  scheduleAutoWatch();
+}
+
+elements.autoInterval.addEventListener("change", updateAutoControls);
+elements.autoToggle.addEventListener("click", async () => {
+  if (state.autoWatch.active) {
+    stopAutoWatch();
+    return;
+  }
+
+  const interval = normalizeWatchInterval(elements.autoInterval.value);
+  const source = elements.autoSource.value;
+  if (!interval) return;
+  if (source === "movie" && (!elements.movie.src || elements.movie.readyState < HTMLMediaElement.HAVE_METADATA)) {
+    setStatus("Load a movie before starting timed watching.", "error");
+    return;
+  }
+  if (source === "screen" && !state.screenStream) {
+    setStatus("Start screen sharing before choosing the shared screen as the timed source.", "error");
+    return;
+  }
+
+  state.autoWatch.active = true;
+  state.autoWatch.source = source;
+  state.autoWatch.interval = interval;
+  state.autoWatch.lastMoviePosition = null;
+  updateAutoControls();
+  elements.autoState.textContent = `Timed watching started for ${source}.`;
+  await runAutoWatch();
+});
+
+updateAutoControls();
+
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden && state.screenStream) stopScreenShare();
+  if (!document.hidden) return;
+  if (state.autoWatch.active) stopAutoWatch("Timed watching stopped when the PWA left the foreground.");
+  if (state.screenStream) stopScreenShare();
 });
 
 window.addEventListener("beforeinstallprompt", (event) => {
@@ -249,6 +351,7 @@ if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
 }
 
 window.addEventListener("pagehide", () => {
+  stopAutoWatch();
   stopScreenShare();
   if (state.localURL) URL.revokeObjectURL(state.localURL);
   if (state.previewURL) URL.revokeObjectURL(state.previewURL);

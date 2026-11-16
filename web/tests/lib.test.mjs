@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { formatTime, parseSubtitles, subtitlesThrough } from "../lib.js";
+import { formatTime, normalizeWatchInterval, parseSubtitles, subtitlesThrough } from "../lib.js";
 
 test("parses SRT and excludes unfinished dialogue", () => {
   const cues = parseSubtitles(
@@ -20,4 +20,12 @@ test("parses WebVTT settings and skips malformed blocks", () => {
 test("formats playback time", () => {
   assert.equal(formatTime(65.9), "1:05");
   assert.equal(formatTime(3661), "1:01:01");
+});
+
+test("accepts only supported timed-watching intervals", () => {
+  assert.equal(normalizeWatchInterval("10"), 10);
+  assert.equal(normalizeWatchInterval(30), 30);
+  assert.equal(normalizeWatchInterval("60"), 60);
+  assert.equal(normalizeWatchInterval("15"), 0);
+  assert.equal(normalizeWatchInterval("manual"), 0);
 });

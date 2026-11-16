@@ -58,3 +58,10 @@ export function formatTime(seconds) {
     ? `${hours}:${String(minutes).padStart(2, "0")}:${String(rest).padStart(2, "0")}`
     : `${minutes}:${String(rest).padStart(2, "0")}`;
 }
+
+export const WATCH_INTERVALS = Object.freeze([10, 30, 60]);
+
+export function normalizeWatchInterval(value) {
+  const number = Number(value);
+  return WATCH_INTERVALS.includes(number) ? number : 0;
+}
