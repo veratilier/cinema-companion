@@ -1,49 +1,75 @@
 # Cinema Companion
 
-A small iOS-oriented toolkit extracted from a personal cinema feature. It separates **screen sharing** from **media import**, and leaves AI, identity, storage and credentials to the host app.
+一个可以接进 iPhone App 的小小共影室：选一部影片，或者分享眼前的画面，和你的 AI 一起看、一起聊。
 
-## What is included
+项目把界面和播放能力整理成了 Swift 包。你可以接入自己已有的 AI、聊天界面和后端，让陪你看的人保留原本的名字、记忆与说话方式。
 
-- **In-app screen sharing:** a ReplayKit foreground capture helper and a SwiftUI demo for sampling and sharing the current host-app screen. It stops when the app goes to the background or the view closes.
-- **Cross-app screen sharing:** a reusable JPEG frame sampler and an example Broadcast Upload Extension. The host must add the extension, configure its own secure transport, supply user controls, and explicitly start and stop the system broadcast. The example intentionally does not upload frames by itself.
-- **Import media:** choose a local video, play it with AVPlayer, optionally load SRT/VTT, and share the current frame, title, playback time and already-finished subtitle cues. Audio is not sent.
-- **Optional Bilibili import helpers:** `server/media_import.py` prepares a temporary compatible video through yt-dlp and ffmpeg. These are integration helpers, **not a standalone HTTP server**. See [server integration](docs/server.md).
+> **目前是给开发者接入的工具包，还不是下载后就能直接使用的完整 App。** 项目不附带 AI 服务，也没有预设服务器或账号。跨 App 屏幕分享和 B 站导入都需要宿主 App 或后端继续接线。
 
-The package does not include an AI, a backend endpoint, any credentials, an app project, a complete broadcast transport, or automatic commentary. Supply a closure to `CinemaView` that sends a `SharedScene` to your own backend and returns an optional reply. Choose and implement your own user consent, access control, credential storage, rate limits, retention, and UI. A model receives still images, not continuous video; protected content may be black. Device capture, audio restrictions, background behavior and supported video sites must be verified on real devices.
+## 可以做什么
 
-## Add to an iOS app
+### 📱 屏幕共享
 
-Add the repository as a local Swift package in Xcode and link the `CinemaCompanion` library to an iOS app target (iOS 16+). Present `CinemaView` from SwiftUI:
+- 分享 App 自己当前的画面，把截图交给你的 AI 后端。
+- 提供系统录屏扩展的画面采样工具，供宿主接入后分享其他 App 的画面。
+- 采样得到的是**一张张图片**，不是连续视频流；目前不发送声音。
+
+App 内画面采样在进入后台或离开页面时停止。跨 App 分享需要宿主配置录屏扩展、传输和结束逻辑，并由用户通过 iOS 的系统界面明确开启。
+
+### 🎞️ 导入影片
+
+- 从文件里选视频，用系统播放器播放。
+- 导入 SRT 或 VTT 字幕。
+- 点击分享时，把当前画面、影片名称、播放进度，以及此前已经结束的字幕交给宿主。
+- 提供一个可选的 B 站导入辅助模块，由后端使用 yt-dlp 和 ffmpeg 准备临时影片。
+
+字幕只包含已经结束的内容，避免提前把后面的台词交给 AI。B 站导入模块只是后端组件，需要开发者自行提供接口、身份验证和部署环境；它不会绕过平台的账号、地区限制或 DRM。
+
+## 怎么接入
+
+需要 Xcode 和 iOS 16 或更高版本。在 Xcode 中把本项目作为 Swift Package 添加到你的 App，然后在 SwiftUI 页面中使用：
 
 ```swift
 import SwiftUI
 import CinemaCompanion
 
-struct Example: View {
+struct CinemaPage: View {
     var body: some View {
         CinemaView { scene in
-            // Implement your own authorized transport. Handle `scene.jpeg`,
-            // `scene.source`, `scene.position`, and `scene.subtitles`.
-            // Never embed real credentials into source code.
+            // 在这里连接自己的 AI 后端。
+            // scene 包含图片、来源，以及影片进度和字幕（如有）。
+            // 返回的文字会显示在页面上；nil 表示不显示回复。
             return nil
         }
     }
 }
 ```
 
-To share another app's screen, create a Broadcast Upload Extension, link the package, and adapt `Examples/BroadcastExtension/SampleHandler.swift`. The containing app must present Apple's broadcast picker and provide the transport and session lifecycle. iOS owns the consent UI. Neither example captures audio.
+上面的回调只是接入位置，**不会自动发送图片或产生 AI 回复**。你需要自己实现请求、身份验证、错误处理和数据保存。
 
-## Verify
+如果想分享其他 App 的屏幕，需要创建 Broadcast Upload Extension、接入项目提供的采样器，并自行实现安全的帧传输。项目附有 [录屏扩展示例](Examples/BroadcastExtension/SampleHandler.swift)；示例不会自行上传画面。
+
+B 站导入的依赖、配置和接入边界见 [服务端说明](docs/server.md)。
+
+## 使用前知道这些
+
+- 是否发送画面和字幕由接入者的代码决定；本项目没有内置 AI 服务，也不包含账号、密钥或服务器地址。
+- 一起看的 AI 实际收到的是采样图片，不是完整影片；项目目前也不传递影片或屏幕声音。
+- 视频平台、iOS 和受保护内容可能限制截图或录屏，出现黑屏或无法获取画面。
+- 跨 App 录屏、设备签名、后台行为及视频站兼容性需要在真实设备上验证。
+- 可选导入模块会保存临时视频；它只在下一次导入时清理过期文件。部署者应补充定期清理。
+
+## 检查项目
 
 ```sh
-python3 -m unittest discover -s python_tests -v
 swift test
+python3 -m unittest discover -s python_tests -v
 ```
 
-To compile the iOS-only views, run an iOS simulator build with Xcode. Simulator builds do not establish that ReplayKit, signing, or a broadcast extension works on a physical device.
+Swift 测试覆盖字幕解析；Python 测试覆盖导入链接校验、临时任务复用、播放票据和字节范围解析。iOS 页面还需要使用 Xcode 的 iOS Simulator 目标编译；这些检查不能替代真机录屏测试。
 
-## Data and media
+给 AI 或开发者接手的结构化说明：[README.agent.md](README.agent.md)。
 
-Frames and subtitle text are sent only when the host's callback does so. The package has no built-in AI or endpoint. The optional server module stores temporary video and state locally; it accepts only supported Bilibili URLs and does not bypass DRM, account, or region restrictions. Read the host application's data policies and the platform's terms before use.
+## 许可证
 
-This project is intended as an integration starting point, not a complete deployable service. You must write and secure the host API and configure cleanup before exposing it to a network.
+[MIT](LICENSE)
