@@ -29,6 +29,11 @@ const elements = {
   customIntervalWrap: byID("custom-interval-wrap"),
   autoToggle: byID("auto-toggle"),
   autoState: byID("auto-state"),
+  moviePanel: byID("movie-panel"),
+  screenPanel: byID("screen-panel"),
+  screenEmpty: byID("screen-empty"),
+  urlLoader: byID("url-loader"),
+  toggleUrl: byID("toggle-url"),
 };
 
 const state = {
@@ -54,11 +59,11 @@ function setStatus(message, kind = "") {
 }
 
 function setMovieSource(source, title) {
-  stopAutoWatch("Timed watching stopped because the movie changed.");
+  stopAutoWatch("已停止");
   state.cues = [];
   elements.fileSubtitles.value = "";
-  elements.subtitleState.textContent = "No subtitles loaded";
-  elements.subtitleNow.textContent = "No active subtitle";
+  elements.subtitleState.textContent = "未导入字幕";
+  elements.subtitleNow.textContent = "没有当前字幕";
   if (state.localURL) {
     URL.revokeObjectURL(state.localURL);
     state.localURL = null;
@@ -80,28 +85,28 @@ elements.fileVideo.addEventListener("change", (event) => {
   const localURL = URL.createObjectURL(file);
   setMovieSource(localURL, file.name.replace(/\.[^.]+$/, ""));
   state.localURL = localURL;
-  setStatus("Local video loaded.", "success");
+  setStatus("影片已载入", "success");
 });
 
 elements.loadUrl.addEventListener("click", () => {
   const value = elements.remoteUrl.value.trim();
   if (!value) {
-    setStatus("Paste an HTTPS media URL first.", "error");
+    setStatus("先粘贴影片的 HTTPS 地址。", "error");
     return;
   }
   let url;
   try {
     url = new URL(value);
   } catch {
-    setStatus("That media URL is not valid.", "error");
+    setStatus("这个影片地址不太对，请检查一下。", "error");
     return;
   }
   if (url.protocol !== "https:") {
-    setStatus("Remote media must use HTTPS.", "error");
+    setStatus("影片地址需要使用 HTTPS。", "error");
     return;
   }
   setMovieSource(url.href, url.pathname.split("/").pop() || "Remote media");
-  setStatus("Remote media address loaded. Frame sharing also requires CORS permission from its server.", "success");
+  setStatus("影片地址已载入。", "success");
 });
 
 elements.fileSubtitles.addEventListener("change", async (event) => {
@@ -110,12 +115,12 @@ elements.fileSubtitles.addEventListener("change", async (event) => {
   try {
     state.cues = parseSubtitles(await file.text());
     if (!state.cues.length) throw new Error("No readable subtitle cues found.");
-    elements.subtitleState.textContent = `${state.cues.length} subtitle cues loaded`;
-    setStatus("Subtitles loaded.", "success");
+    elements.subtitleState.textContent = `已载入 ${state.cues.length} 条字幕`;
+    setStatus("字幕已载入", "success");
     updatePlaybackState();
   } catch (error) {
     state.cues = [];
-    elements.subtitleState.textContent = "No subtitles loaded";
+    elements.subtitleState.textContent = "未导入字幕";
     setStatus(error.message || "Unable to read subtitles.", "error");
   }
 });
@@ -125,13 +130,13 @@ function updatePlaybackState() {
   const current = state.cues.filter(
     (cue) => cue.start <= elements.movie.currentTime && cue.end >= elements.movie.currentTime,
   );
-  elements.subtitleNow.textContent = current.map((cue) => cue.text).join(" ") || "No active subtitle";
+  elements.subtitleNow.textContent = current.map((cue) => cue.text).join(" ") || "没有当前字幕";
 }
 
 elements.movie.addEventListener("timeupdate", updatePlaybackState);
 elements.movie.addEventListener("loadedmetadata", updatePlaybackState);
 elements.movie.addEventListener("error", () => {
-  setStatus("The browser could not play this media address.", "error");
+  setStatus("这个影片地址暂时无法播放。", "error");
 });
 
 async function captureFrame(video, quality = 0.82) {
@@ -172,7 +177,7 @@ async function deliver(scene) {
   const handler = window.cinemaCompanionOnScene;
   window.dispatchEvent(new CustomEvent("cinema-companion-scene", { detail: scene }));
   if (typeof handler !== "function") {
-    elements.reply.textContent = "Scene captured locally. Add a host adapter to send it to your AI.";
+    elements.reply.textContent = "画面已截取；接入 AI 后才能发送。";
     return false;
   }
 
@@ -185,7 +190,7 @@ async function share(source) {
   if (state.sharing) return;
   state.sharing = true;
   updateShareControls();
-  setStatus("Preparing scene…");
+  setStatus("正在准备画面…");
   try {
     const video = source === "movie" ? elements.movie : elements.screenVideo;
     const jpeg = await captureFrame(video, source === "movie" ? 0.82 : 0.68);
@@ -198,7 +203,7 @@ async function share(source) {
       position,
       subtitles: source === "movie" ? subtitlesThrough(position, state.cues) : [],
     });
-    setStatus(sent ? "Scene shared with the host adapter." : "Scene captured locally; no host adapter is connected.", sent ? "success" : "");
+    setStatus(sent ? "画面已分享" : "画面已截取，尚未连接 AI。", sent ? "success" : "");
   } catch (error) {
     const corsHint = error?.name === "SecurityError" ? " The media server must allow CORS for frame capture." : "";
     setStatus(`${error.message || "Unable to share this frame."}${corsHint}`, "error");
@@ -218,22 +223,23 @@ elements.shareScreen.addEventListener("click", () => share("screen"));
 
 function stopScreenShare() {
   if (state.autoWatch.active && state.autoWatch.source === "screen") {
-    stopAutoWatch("Timed watching stopped because screen sharing ended.");
+    stopAutoWatch("屏幕共享已结束");
   }
   state.screenStream?.getTracks().forEach((track) => track.stop());
   state.screenStream = null;
   elements.screenVideo.srcObject = null;
   elements.screenVideo.hidden = true;
+  elements.screenEmpty.hidden = false;
   elements.screenStart.disabled = !navigator.mediaDevices?.getDisplayMedia;
   elements.screenStop.disabled = true;
   elements.shareScreen.disabled = true;
 }
 
 if (navigator.mediaDevices?.getDisplayMedia) {
-  elements.screenNote.textContent = "This browser exposes screen capture. Permission is requested every time you start.";
+  elements.screenNote.textContent = "开始时需要选择共享画面。";
   elements.screenStart.disabled = false;
 } else {
-  elements.screenNote.textContent = "Screen capture is not exposed by this browser. Local movie sharing still works.";
+  elements.screenNote.textContent = "当前浏览器暂不支持屏幕共享。";
 }
 
 elements.screenStart.addEventListener("click", async () => {
@@ -243,12 +249,13 @@ elements.screenStart.addEventListener("click", async () => {
     state.screenStream = stream;
     elements.screenVideo.srcObject = stream;
     elements.screenVideo.hidden = false;
+    elements.screenEmpty.hidden = true;
     await elements.screenVideo.play();
     stream.getVideoTracks()[0]?.addEventListener("ended", stopScreenShare, { once: true });
     elements.screenStart.disabled = true;
     elements.screenStop.disabled = false;
     updateShareControls();
-    setStatus("Screen sharing started.", "success");
+    setStatus("屏幕共享已开启", "success");
   } catch (error) {
     stopScreenShare();
     setStatus(error.message || "Screen sharing was not started.", "error");
@@ -263,12 +270,12 @@ function updateAutoControls() {
   elements.customIntervalWrap.hidden = !custom;
   elements.customInterval.disabled = state.autoWatch.active;
   elements.autoToggle.disabled = !state.autoWatch.active && interval === 0;
-  elements.autoToggle.textContent = state.autoWatch.active ? "Stop timed watching" : "Start timed watching";
+  elements.autoToggle.setAttribute("aria-checked", String(state.autoWatch.active));
   elements.autoSource.disabled = state.autoWatch.active;
   elements.autoInterval.disabled = state.autoWatch.active;
 }
 
-function stopAutoWatch(message = "Timed watching is off. Share a frame manually whenever you want.") {
+function stopAutoWatch(message = "默认关闭") {
   if (state.autoWatch.timer) clearTimeout(state.autoWatch.timer);
   state.autoWatch.timer = null;
   state.autoWatch.active = false;
@@ -280,7 +287,7 @@ function stopAutoWatch(message = "Timed watching is off. Share a frame manually 
 
 function scheduleAutoWatch() {
   if (!state.autoWatch.active) return;
-  elements.autoState.textContent = `Watching ${state.autoWatch.source} every ${state.autoWatch.interval} seconds. Next scene is scheduled automatically.`;
+  elements.autoState.textContent = `每 ${state.autoWatch.interval} 秒看一眼`;
   state.autoWatch.timer = window.setTimeout(runAutoWatch, state.autoWatch.interval * 1000);
 }
 
@@ -289,14 +296,14 @@ async function runAutoWatch() {
   if (!state.autoWatch.active) return;
   const generation = state.autoWatch.generation;
   if (document.hidden) {
-    stopAutoWatch("Timed watching stopped when the PWA left the foreground.");
+    stopAutoWatch("页面离开前台，已停止");
     return;
   }
 
   const source = state.autoWatch.source;
   if (source === "movie") {
     if (!elements.movie.src || elements.movie.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-      stopAutoWatch("Timed watching stopped because no playable movie is loaded.");
+      stopAutoWatch("影片不可用，已停止");
       return;
     }
     const position = elements.movie.currentTime;
@@ -304,13 +311,13 @@ async function runAutoWatch() {
       state.autoWatch.lastMoviePosition !== null &&
       Math.abs(position - state.autoWatch.lastMoviePosition) < 0.25
     ) {
-      elements.autoState.textContent = "Waiting for movie playback before sharing another scene.";
+      elements.autoState.textContent = "等待影片继续播放";
       scheduleAutoWatch();
       return;
     }
     state.autoWatch.lastMoviePosition = position;
   } else if (!state.screenStream) {
-    stopAutoWatch("Timed watching stopped because screen sharing is not active.");
+    stopAutoWatch("屏幕共享已结束");
     return;
   }
 
@@ -330,11 +337,11 @@ elements.autoToggle.addEventListener("click", async () => {
   const source = elements.autoSource.value;
   if (!interval) return;
   if (source === "movie" && (!elements.movie.src || elements.movie.readyState < HTMLMediaElement.HAVE_METADATA)) {
-    setStatus("Load a movie before starting timed watching.", "error");
+    setStatus("先选择一部影片。", "error");
     return;
   }
   if (source === "screen" && !state.screenStream) {
-    setStatus("Start screen sharing before choosing the shared screen as the timed source.", "error");
+    setStatus("先开启屏幕共享。", "error");
     return;
   }
 
@@ -343,7 +350,7 @@ elements.autoToggle.addEventListener("click", async () => {
   state.autoWatch.interval = interval;
   state.autoWatch.lastMoviePosition = null;
   updateAutoControls();
-  elements.autoState.textContent = `Timed watching started for ${source}.`;
+  elements.autoState.textContent = `每 ${interval} 秒看一眼`;
   await runAutoWatch();
 });
 
@@ -351,7 +358,7 @@ updateAutoControls();
 
 document.addEventListener("visibilitychange", () => {
   if (!document.hidden) return;
-  if (state.autoWatch.active) stopAutoWatch("Timed watching stopped when the PWA left the foreground.");
+  if (state.autoWatch.active) stopAutoWatch("页面离开前台，已停止");
   if (state.screenStream) stopScreenShare();
 });
 
@@ -378,3 +385,23 @@ window.addEventListener("pagehide", () => {
   if (state.localURL) URL.revokeObjectURL(state.localURL);
   if (state.previewURL) URL.revokeObjectURL(state.previewURL);
 });
+
+elements.toggleUrl.addEventListener("click", () => {
+  elements.urlLoader.hidden = !elements.urlLoader.hidden;
+  elements.toggleUrl.setAttribute("aria-expanded", String(!elements.urlLoader.hidden));
+});
+
+document.querySelectorAll(".tab").forEach((button) => button.addEventListener("click", () => {
+  const mode = button.dataset.mode;
+  if (elements.autoSource.value !== mode) stopAutoWatch();
+  elements.autoSource.value = mode;
+  elements.moviePanel.hidden = mode !== "movie";
+  elements.screenPanel.hidden = mode !== "screen";
+  elements.shareMovie.hidden = mode !== "movie";
+  elements.shareScreen.hidden = mode !== "screen";
+  document.querySelectorAll(".tab").forEach((tab) => {
+    const selected = tab === button;
+    tab.classList.toggle("active", selected);
+    tab.setAttribute("aria-pressed", String(selected));
+  });
+}));

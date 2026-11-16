@@ -1,138 +1,81 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#11101a" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <title>Cinema Companion</title>
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
-  <body>
-    <header class="hero">
-      <div>
-        <p class="eyebrow">PWA Lite</p>
-        <h1>Cinema Companion</h1>
-        <p class="lede">Choose a movie, share the current frame, and let your own AI watch with you.</p>
-      </div>
-      <button id="install" class="secondary" hidden>Install app</button>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#e8edef" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <title>Cinema Companion</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <main class="cinema">
+    <header class="header">
+      <div><p class="eyebrow">A LITTLE TIME TOGETHER</p><h1>Cinema</h1><p class="subtitle">选一部喜欢的，慢慢看。</p></div>
+      <button id="install" class="install" hidden>安装</button>
     </header>
 
-    <main>
-      <section class="card">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Local or hosted media</p>
-            <h2>Watch a movie</h2>
-          </div>
-          <span id="movie-position" class="time">--:--</span>
-        </div>
+    <nav class="tabs" aria-label="观看方式">
+      <button class="tab active" type="button" data-mode="movie" aria-pressed="true">影片</button>
+      <button class="tab" type="button" data-mode="screen" aria-pressed="false">屏幕共享</button>
+    </nav>
 
-        <div class="stage">
-          <div id="movie-empty" class="empty">Choose a local movie or load a signed HTTPS media URL.</div>
-          <video id="movie" controls playsinline hidden></video>
-        </div>
+    <section class="mode" id="movie-panel" aria-label="影片">
+      <div class="stage">
+        <div id="movie-empty" class="empty"><span class="play-icon" aria-hidden="true">▶</span><strong>今晚看点什么？</strong><small>选择一部影片，或导入播放地址</small></div>
+        <video id="movie" controls playsinline hidden></video>
+        <span class="stage-label" aria-hidden="true">OUR LITTLE CINEMA</span>
+        <span id="movie-position" class="time">--:--</span>
+      </div>
+      <div class="movie-actions">
+        <label class="button primary">＋&nbsp; 选择影片<input id="file-video" type="file" accept="video/*" hidden /></label>
+        <button id="toggle-url" class="button quiet" type="button" aria-expanded="false">导入链接</button>
+        <label class="button quiet subtitles-button">字幕<input id="file-subtitles" type="file" accept=".srt,.vtt,text/plain,text/vtt" hidden /></label>
+      </div>
+      <div class="url-loader" id="url-loader" hidden>
+        <input id="remote-url" type="url" inputmode="url" placeholder="HTTPS 视频地址" autocomplete="off" aria-label="HTTPS 视频地址" />
+        <button id="load-url" class="button quiet">载入</button>
+      </div>
+      <div class="movie-info"><span id="movie-title">还没有选择影片</span><span id="subtitle-state">未导入字幕</span></div>
+      <span id="subtitle-now" class="sr-only">No active subtitle</span>
+    </section>
 
-        <div class="controls wrap">
-          <label class="button primary">
-            Choose movie
-            <input id="file-video" type="file" accept="video/*" hidden />
-          </label>
-          <label class="button secondary">
-            Import SRT/VTT
-            <input id="file-subtitles" type="file" accept=".srt,.vtt,text/plain,text/vtt" hidden />
-          </label>
-          <button id="share-movie" disabled>Look at this moment</button>
-        </div>
-
-        <div class="url-loader">
-          <input id="remote-url" type="url" inputmode="url" placeholder="Signed HTTPS media URL" autocomplete="off" />
-          <button id="load-url" class="secondary">Load URL</button>
-        </div>
-
-        <dl class="metadata">
-          <div><dt>Title</dt><dd id="movie-title">No movie loaded</dd></div>
-          <div><dt>Subtitles</dt><dd id="subtitle-state">No subtitles loaded</dd></div>
-          <div><dt>Current line</dt><dd id="subtitle-now">No active subtitle</dd></div>
-        </dl>
-      </section>
-
-      <section class="card">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Progressive enhancement</p>
-            <h2>Share a screen</h2>
-          </div>
-        </div>
-        <p id="screen-note" class="note">Checking screen-capture support…</p>
+    <section class="mode" id="screen-panel" aria-label="屏幕共享" hidden>
+      <div class="stage screen-stage">
+        <div id="screen-empty" class="empty"><span class="play-icon" aria-hidden="true">▣</span><strong>一起看看你的屏幕</strong><small>选择要分享的画面</small></div>
         <video id="screen-video" class="screen-preview" muted autoplay playsinline hidden></video>
-        <div class="controls wrap">
-          <button id="screen-start" class="primary" disabled>Start screen share</button>
-          <button id="share-screen" disabled>Look at this moment</button>
-          <button id="screen-stop" class="secondary" disabled>Stop</button>
-        </div>
-        <p class="fineprint">Screen capture depends on the browser. iPhone and iPad web apps must not be presented as a replacement for a native ReplayKit broadcast extension.</p>
-      </section>
+        <span class="stage-label" aria-hidden="true">SHARE A LITTLE MOMENT</span>
+      </div>
+      <div class="movie-actions"><button id="screen-start" class="button primary" disabled>开始共享</button><button id="screen-stop" class="button quiet" disabled>结束共享</button></div>
+      <p id="screen-note" class="muted">正在检查屏幕共享…</p>
+      <p class="muted">手机浏览器对跨 App 共享有系统限制。</p>
+    </section>
 
-      <section class="card">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Explicit opt-in</p>
-            <h2>Timed watching</h2>
-          </div>
-        </div>
-        <p class="note">Choose how often the foreground PWA shares a new frame. Manual remains the default, and only one timed source can run at once.</p>
-        <div class="timed-controls">
-          <label>
-            <span>Source</span>
-            <select id="auto-source">
-              <option value="movie">Movie</option>
-              <option value="screen">Shared screen</option>
-            </select>
-          </label>
-          <label>
-            <span>Interval</span>
-            <select id="auto-interval">
-              <option value="0">Manual only</option>
-              <option value="10">Every 10 seconds</option>
-              <option value="30">Every 30 seconds</option>
-              <option value="60">Every 1 minute</option>
-              <option value="custom">Custom interval…</option>
-            </select>
-          </label>
-          <label id="custom-interval-wrap" hidden>
-            <span>Custom interval (seconds)</span>
-            <input id="custom-interval" type="number" inputmode="numeric" min="5" max="3600" step="1" value="15" />
-          </label>
-          <button id="auto-toggle" class="primary" disabled>Start timed watching</button>
-        </div>
-        <p id="auto-state" class="fineprint">Timed watching is off. Share a frame manually whenever you want.</p>
-        <p class="fineprint">Custom intervals: 5–3600 seconds. The next timer starts after the previous share finishes. Manual sharing works even when timed watching is off.</p>
-      </section>
+    <section class="together">
+      <div class="together-heading"><h2>Watch together</h2><span>陪看设置</span></div>
+      <p class="intro">想分享的时候叫他看看，也可以让他隔一会儿看一眼。</p>
+      <div class="options">
+        <div class="option"><div><strong>自动陪看</strong><small id="auto-state">默认关闭</small></div><button id="auto-toggle" class="toggle" type="button" role="switch" aria-checked="false" aria-label="自动陪看" disabled><span></span></button></div>
+        <label class="option"><strong>看一眼的间隔</strong><select id="auto-interval" aria-label="看一眼的间隔"><option value="10">10 秒</option><option value="30" selected>30 秒</option><option value="60">1 分钟</option><option value="custom">自定义</option></select></label>
+        <label id="custom-interval-wrap" class="option" hidden><strong>间隔秒数</strong><input id="custom-interval" type="number" inputmode="numeric" min="5" max="3600" step="1" value="15" aria-label="自定义间隔秒数" /></label>
+      </div>
+      <select id="auto-source" class="sr-only" aria-label="陪看来源"><option value="movie">影片</option><option value="screen">屏幕</option></select>
+      <button id="share-movie" class="look" disabled>✧&nbsp; 看这一刻</button>
+      <button id="share-screen" class="look" disabled hidden>✧&nbsp; 看这一刻</button>
+      <p class="helper">间隔可设为 5–3600 秒，仅在页面打开时分享。</p>
+    </section>
 
-      <section class="card output-card">
-        <div class="section-heading">
-          <div>
-            <p class="eyebrow">Host integration</p>
-            <h2>Shared scene</h2>
-          </div>
-        </div>
-        <div class="output-grid">
-          <img id="capture-preview" alt="Most recently shared scene" hidden />
-          <pre id="scene-json">Capture a frame to inspect the scene payload.</pre>
-        </div>
-        <div id="reply" class="reply" aria-live="polite"></div>
-      </section>
-
-      <p id="status" class="status" role="status" aria-live="polite">Ready.</p>
-    </main>
-
-    <footer>
-      <p>Frames stay local unless the host provides <code>window.cinemaCompanionOnScene</code>.</p>
-    </footer>
-    <script type="module" src="./app.js"></script>
-  </body>
+    <details class="scene-details">
+      <summary>查看最近分享的画面</summary>
+      <div class="output-grid"><img id="capture-preview" alt="最近分享的画面" hidden /><pre id="scene-json">还没有分享画面。</pre></div>
+      <div id="reply" class="reply" aria-live="polite"></div>
+    </details>
+    <p id="status" class="status" role="status" aria-live="polite"></p>
+    <footer>a little time, just for us.</footer>
+  </main>
+  <script type="module" src="./app.js"></script>
+</body>
 </html>
