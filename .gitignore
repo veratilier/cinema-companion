@@ -1,0 +1,13 @@
+.build/
+.swiftpm/
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+.env.*
+*.p12
+*.mobileprovision
+*.pem
+*.key
+*credentials*.json
+*cookie*.txt
