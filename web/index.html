@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#11101a" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <title>Cinema Companion</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <div>
+        <p class="eyebrow">PWA Lite</p>
+        <h1>Cinema Companion</h1>
+        <p class="lede">Choose a movie, share the current frame, and let your own AI watch with you.</p>
+      </div>
+      <button id="install" class="secondary" hidden>Install app</button>
+    </header>
+
+    <main>
+      <section class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Local or hosted media</p>
+            <h2>Watch a movie</h2>
+          </div>
+          <span id="movie-position" class="time">--:--</span>
+        </div>
+
+        <div class="stage">
+          <div id="movie-empty" class="empty">Choose a local movie or load a signed HTTPS media URL.</div>
+          <video id="movie" controls playsinline hidden></video>
+        </div>
+
+        <div class="controls wrap">
+          <label class="button primary">
+            Choose movie
+            <input id="file-video" type="file" accept="video/*" hidden />
+          </label>
+          <label class="button secondary">
+            Import SRT/VTT
+            <input id="file-subtitles" type="file" accept=".srt,.vtt,text/plain,text/vtt" hidden />
+          </label>
+          <button id="share-movie" disabled>Share current frame</button>
+        </div>
+
+        <div class="url-loader">
+          <input id="remote-url" type="url" inputmode="url" placeholder="Signed HTTPS media URL" autocomplete="off" />
+          <button id="load-url" class="secondary">Load URL</button>
+        </div>
+
+        <dl class="metadata">
+          <div><dt>Title</dt><dd id="movie-title">No movie loaded</dd></div>
+          <div><dt>Subtitles</dt><dd id="subtitle-state">No subtitles loaded</dd></div>
+          <div><dt>Current line</dt><dd id="subtitle-now">No active subtitle</dd></div>
+        </dl>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Progressive enhancement</p>
+            <h2>Share a screen</h2>
+          </div>
+        </div>
+        <p id="screen-note" class="note">Checking screen-capture support…</p>
+        <video id="screen-video" class="screen-preview" muted autoplay playsinline hidden></video>
+        <div class="controls wrap">
+          <button id="screen-start" class="primary" disabled>Start screen share</button>
+          <button id="share-screen" disabled>Share current screen</button>
+          <button id="screen-stop" class="secondary" disabled>Stop</button>
+        </div>
+        <p class="fineprint">Screen capture depends on the browser. iPhone and iPad web apps must not be presented as a replacement for a native ReplayKit broadcast extension.</p>
+      </section>
+
+      <section class="card output-card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Host integration</p>
+            <h2>Shared scene</h2>
+          </div>
+        </div>
+        <div class="output-grid">
+          <img id="capture-preview" alt="Most recently shared scene" hidden />
+          <pre id="scene-json">Capture a frame to inspect the scene payload.</pre>
+        </div>
+        <div id="reply" class="reply" aria-live="polite"></div>
+      </section>
+
+      <p id="status" class="status" role="status" aria-live="polite">Ready.</p>
+    </main>
+
+    <footer>
+      <p>Frames stay local unless the host provides <code>window.cinemaCompanionOnScene</code>.</p>
+    </footer>
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

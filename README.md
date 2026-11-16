@@ -25,6 +25,12 @@ App 内画面采样在进入后台或离开页面时停止。跨 App 分享需�
 
 字幕只包含已经结束的内容，避免提前把后面的台词交给 AI。B 站导入模块只是后端组件，需要开发者自行提供接口、身份验证和部署环境；它不会绕过平台的账号、地区限制或 DRM。
 
+### 🌐 PWA Lite
+
+`web/` 提供一个不需要构建工具的轻量网页版本。它可以安装到支持 PWA 的设备，选择本地视频或加载宿主签发的 HTTPS 播放地址、导入 SRT/VTT 字幕，并把用户主动截取的当前帧交给自己的 AI 适配器。
+
+网页端还会在浏览器提供 `getDisplayMedia()` 时显示屏幕共享入口。该能力属于渐进增强：桌面浏览器通常可用并且每次都要由用户授权；iPhone/iPad PWA 不应被描述成原生 ReplayKit 广播扩展的替代品，也不能承诺跨 App、后台持续采样、持久权限或系统音频。
+
 ## 怎么接入
 
 需要 Xcode 和 iOS 16 或更高版本。在 Xcode 中把本项目作为 Swift Package 添加到你的 App，然后在 SwiftUI 页面中使用：
@@ -51,12 +57,23 @@ struct CinemaPage: View {
 
 B 站导入的依赖、配置和接入边界见 [服务端说明](docs/server.md)。
 
+PWA 可以直接用静态服务器启动：
+
+```sh
+cd web
+python3 -m http.server 4173
+```
+
+打开 `http://localhost:4173`。PWA 本身不会自动把画面发到任何地方；宿主需要提供 `window.cinemaCompanionOnScene(scene)`，其中 `scene.jpeg` 是 `Blob`，其余字段与 Swift 版的 `SharedScene` 对齐。完整说明和请求示例见 [web/README.md](web/README.md)。部署到非 localhost 环境时必须使用 HTTPS。
+
 ## 使用前知道这些
 
 - 是否发送画面和字幕由接入者的代码决定；本项目没有内置 AI 服务，也不包含账号、密钥或服务器地址。
 - 一起看的 AI 实际收到的是采样图片，不是完整影片；项目目前也不传递影片或屏幕声音。
 - 视频平台、iOS 和受保护内容可能限制截图或录屏，出现黑屏或无法获取画面。
 - 跨 App 录屏、设备签名、后台行为及视频站兼容性需要在真实设备上验证。
+- PWA 的可靠范围是页内视频播放、字幕和用户主动分享当前帧；移动端浏览器可能没有屏幕共享能力，页面进入后台时也可能被系统挂起。
+- 远程视频要允许跨域画布读取，否则可以播放但无法截取帧；不要把 AI 密钥或长期设备凭据放进网页代码。
 - 可选导入模块会保存临时视频；它只在下一次导入时清理过期文件。部署者应补充定期清理。
 
 ## 检查项目
@@ -64,9 +81,10 @@ B 站导入的依赖、配置和接入边界见 [服务端说明](docs/server.md
 ```sh
 swift test
 python3 -m unittest discover -s python_tests -v
+cd web && npm test
 ```
 
-Swift 测试覆盖字幕解析；Python 测试覆盖导入链接校验、临时任务复用、播放票据和字节范围解析。iOS 页面还需要使用 Xcode 的 iOS Simulator 目标编译；这些检查不能替代真机录屏测试。
+Swift 测试覆盖字幕解析；Python 测试覆盖导入链接校验、临时任务复用、播放票据和字节范围解析；PWA 测试覆盖网页字幕解析和播放时间格式化。iOS 页面还需要使用 Xcode 的 iOS Simulator 目标编译，网页媒体能力也需要在目标浏览器实测；这些检查不能替代真机录屏测试。
 
 给 AI 或开发者接手的结构化说明：[README.agent.md](README.agent.md)。
 

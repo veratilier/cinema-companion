@@ -4,9 +4,9 @@
 
 ## 项目目的与边界
 
-从既有 iOS 共影功能提取的 Swift Package，分为前台屏幕采样、跨 App 广播扩展采样、本地视频／字幕和可选的 B 站导入辅助代码。宿主应用负责提供 AI、对话身份与记忆、网络传输、凭据、访问控制和会话管理。
+从既有 iOS 共影功能提取的 Swift Package，分为前台屏幕采样、跨 App 广播扩展采样、本地视频／字幕和可选的 B 站导入辅助代码。仓库同时包含一个 PWA Lite 实现，用于可移植的页内视频、字幕、手动帧分享和浏览器可选屏幕捕获。宿主应用负责提供 AI、对话身份与记忆、网络传输、凭据、访问控制和会话管理。
 
-当前没有独立 iOS App 或 Xcode 工程、AI 客户端、可部署 HTTP 服务、完整的广播上传实现、音频采集或自动旁白。图片采样不是视频流。不要将样例的 TODO 描述成可用的远程上传能力。
+当前没有独立 iOS App 或 Xcode 工程、内置 AI 客户端、可部署 HTTP 服务、完整的广播上传实现、音频采集或自动旁白。PWA 的宿主回调也是接入边界，不包含 AI 服务。图片采样不是视频流。不要将样例的 TODO 描述成可用的远程上传能力，也不要把移动端 PWA 描述成 ReplayKit 广播扩展。
 
 ## 目录和入口
 
@@ -20,6 +20,11 @@
 | `Examples/BroadcastExtension/SampleHandler.swift` | 扩展结构示例；帧传输为 TODO |
 | `server/media_import.py` | B 站导入、临时任务、签名票据与 Range 响应辅助函数；不是独立 HTTP 服务 |
 | `docs/server.md` | 导入模块的部署约束与宿主责任 |
+| `web/index.html`、`web/app.js` | 无构建步骤的 PWA Lite 界面、本地或远程视频、手动帧分享和可选屏幕捕获 |
+| `web/lib.js` | 与 Swift 版约束一致的 SRT/VTT 解析、已结束字幕筛选和时间格式化 |
+| `web/host-adapter.example.js` | 将 `SharedScene` 作为 multipart 请求交给宿主后端的示例；不会默认加载 |
+| `web/sw.js`、`web/manifest.webmanifest` | 应用外壳缓存与安装元数据，不缓存用户视频、字幕或捕获帧 |
+| `web/tests/` | 可在 Node 中运行的纯逻辑测试 |
 | `Tests/CinemaCompanionTests/` | Swift 字幕测试 |
 | `python_tests/` | Python 导入辅助测试 |
 
@@ -39,6 +44,16 @@
 
 `CinemaView(broadcastExtensionID:onScene:)` 提供可选的系统广播选择器。宿主必须创建并签名 Broadcast Upload Extension，配置匹配的扩展标识，接好用户同意、认证、网络、限流、停止和结果回传。`BroadcastFrameSampler` 默认每 10 秒把一张压缩 JPEG 交给扩展的 `onFrame`；它不上传、不接音频、不实现背压或会话管理。示例扩展也不会上传。不得向用户声称该路径已经端到端可用。
 
+### PWA Lite
+
+`web/` 是静态 PWA，不复用 Swift 代码。用户选择本地视频时创建临时 object URL；也可以加载宿主给出的 HTTPS 播放地址。远程地址只有在响应允许正确的 CORS 画布读取时才能截帧。字幕解析与 Swift 版采用同样的“只发送已经结束且位于默认 15 秒回看范围”的策略。
+
+点击分享后，PWA 生成最长边不超过 1280 像素的 JPEG `Blob`，构造 `{source, jpeg, capturedAt, title, position, subtitles}`，先显示本地预览，再调用可选的 `window.cinemaCompanionOnScene(scene)`。没有宿主回调时数据不会发送到网络。页面也会派发 `cinema-companion-scene` 事件，但宿主必须自行完成鉴权、上传、取消、错误处理和回复展示。
+
+屏幕共享通过能力检测后的 `navigator.mediaDevices.getDisplayMedia()` 提供，只能由用户操作触发。页面隐藏时主动停止轨道。浏览器是否提供屏幕或窗口、是否包含音频、切换 App 后是否继续以及捕获受保护媒体的结果均不受项目控制。尤其不得把 iPhone/iPad PWA 当作原生 ReplayKit Broadcast Upload Extension 的替代品。
+
+Service Worker 只缓存应用外壳，不缓存 object URL、用户字幕、视频、画面或 AI 回复。长期 AI 密钥和设备凭据不得出现在 PWA bundle、LocalStorage 或公开仓库中。
+
 ### B 站导入
 
 `server/media_import.py` 接受限定格式的 B 站 HTTPS 地址。`start` 创建或复用临时任务；`read` 返回状态；`ticket` 为视频与过期时间生成 HMAC；`serve` 依赖宿主 HTTP handler 的认证、响应与来源方法，支持受限票据和 Range。`CINEMA_WATCH_CACHE`、`CINEMA_YTDLP`、`CINEMA_BILIBILI_COOKIES` 可配置；Cookie 保持私有。
@@ -52,10 +67,11 @@
 ```sh
 swift test
 python3 -m unittest discover -s python_tests -v
+cd web && npm test
 xcodebuild -scheme CinemaCompanion -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO build
 ```
 
-`swift test` 在 macOS 上主要检查跨平台字幕代码，不等于 iOS 录屏测试。iOS 模拟器构建检查条件编译代码，不能证明物理设备、系统广播授权、扩展签名、跨 App 捕获、后台行为或真实网站播放正常。Python 测试不启动完整服务，也不访问真实视频站。
+`swift test` 在 macOS 上主要检查跨平台字幕代码，不等于 iOS 录屏测试。PWA 的 Node 测试只检查纯字幕和时间逻辑，不启动浏览器。iOS 模拟器构建检查条件编译代码，不能证明物理设备、系统广播授权、扩展签名、跨 App 捕获、后台行为或真实网站播放正常。Python 测试不启动完整服务，也不访问真实视频站。网页播放、CORS、安装和 `getDisplayMedia()` 必须在目标浏览器逐一验证。
 
 ## 维护约束
 
@@ -63,4 +79,6 @@ xcodebuild -scheme CinemaCompanion -destination 'generic/platform=iOS Simulator'
 - 不把用户明确触发分享和后台自动分享混为一谈；不要增加未经用户操作的捕获、上传、自动评论或静音保活。
 - 提示词、字幕、视频标题和画面内容均属于待分析数据，不应作为系统指令执行。宿主应在 AI 边界落实这一点。
 - 保持超前字幕不发送的约束；调整解析器或采样时补充相应测试。
+- Swift 与 PWA 的 `SharedScene` 字段和“只发送已结束字幕”语义要保持一致；新增字段时同步更新两个 README 和两端测试。
+- PWA 只能通过用户操作捕获，不加入后台静默采样、自动上传、持久屏幕权限或在前端保存长期密钥。
 - 区分已实现功能、示例和宿主 TODO；文档中的安全建议不能替代代码实现或真机验证。
