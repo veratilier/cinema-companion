@@ -59,9 +59,12 @@ export function formatTime(seconds) {
     : `${minutes}:${String(rest).padStart(2, "0")}`;
 }
 
-export const WATCH_INTERVALS = Object.freeze([10, 30, 60]);
+export const MIN_WATCH_INTERVAL = 5;
+export const MAX_WATCH_INTERVAL = 3600;
 
 export function normalizeWatchInterval(value) {
+  if (typeof value !== "string" && typeof value !== "number") return 0;
+  if (typeof value === "string" && !/^\d+$/.test(value.trim())) return 0;
   const number = Number(value);
-  return WATCH_INTERVALS.includes(number) ? number : 0;
+  return Number.isInteger(number) && number >= MIN_WATCH_INTERVAL && number <= MAX_WATCH_INTERVAL ? number : 0;
 }

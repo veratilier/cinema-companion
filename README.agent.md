@@ -34,6 +34,8 @@
 
 `CinemaView(onScene:)` 由文件选择器读取用户选择的视频，`AVPlayer` 在本地播放。用户点“Share this scene”时，使用 `AVAssetImageGenerator` 获取当前帧，构造 `SharedScene` 交给宿主异步回调。回调返回 `String?`：非空可显示为回复；`nil` 表示没有回复。
 
+原生示例的定时模式默认关闭，用户可选 5–3600 秒。循环等待间隔后分享，等待上一轮结束再进入下一次等待；影片暂停时跳过，切换模式、换片、页面离开或进入后台时停止。该定时器仅用于页面中的本地影片和 App 内屏幕采样，不管理跨 App 广播扩展。
+
 `SharedScene` 包含 `source`、JPEG 数据、采集时间，以及影片可用时的 `title`、`position`、`subtitles`。这些字段不包含音频。字幕需用户手动选择 SRT/VTT；解析失败显示错误。过滤策略是 cue 的结束时间不晚于播放位置，且位于默认 15 秒回看范围内；当前尚未结束的字幕也会被排除。
 
 ### 当前 App 的屏幕
@@ -48,9 +50,9 @@
 
 `web/` 是静态 PWA，不复用 Swift 代码。用户选择本地视频时创建临时 object URL；也可以加载宿主给出的 HTTPS 播放地址。远程地址只有在响应允许正确的 CORS 画布读取时才能截帧。字幕解析与 Swift 版采用同样的“只发送已经结束且位于默认 15 秒回看范围”的策略。
 
-点击分享后，PWA 生成最长边不超过 1280 像素的 JPEG `Blob`，构造 `{source, jpeg, capturedAt, title, position, subtitles}`，先显示本地预览，再调用可选的 `window.cinemaCompanionOnScene(scene)`。没有宿主回调时数据不会发送到网络。页面也会派发 `cinema-companion-scene` 事件，但宿主必须自行完成鉴权、上传、取消、错误处理和回复展示。
+点击分享后，PWA 生成最长边不超过 1280 像素的 JPEG `Blob`，构造 `{source, jpeg, capturedAt, title, position, subtitles}`，先显示本地预览、派发 `cinema-companion-scene` 事件，再调用可选的 `window.cinemaCompanionOnScene(scene)`。项目自身不发送数据；宿主回调或事件监听器可以发送，宿主须自行完成鉴权、上传、取消、错误处理和回复展示。
 
-定时陪看默认关闭，只接受 10、30、60 秒三个白名单间隔。用户必须选择 `movie` 或 `screen` 来源并单独点击开始；同一时间只能运行一个来源。定时循环使用串行 `setTimeout`，等待上一轮宿主回调结束后才安排下一轮，避免请求重叠。影片暂停时不重复发送同一时间点；切换影片、屏幕流结束、页面隐藏或离开时立即停止。
+定时陪看默认关闭，提供 10、30、60 秒预设，也接受 5–3600 秒的自定义整数。用户必须选择 `movie` 或 `screen` 来源并单独点击开始；同一时间只能运行一个来源。定时循环使用串行 `setTimeout`，等待上一轮宿主回调结束后才安排下一轮；手动“看这一刻”不启动定时模式，分享进行中按钮暂不可用。影片暂停时定时模式不重复发送同一时间点；切换影片、屏幕流结束、页面隐藏或离开时立即停止。
 
 屏幕共享通过能力检测后的 `navigator.mediaDevices.getDisplayMedia()` 提供，只能由用户操作触发。页面隐藏时主动停止轨道。浏览器是否提供屏幕或窗口、是否包含音频、切换 App 后是否继续以及捕获受保护媒体的结果均不受项目控制。尤其不得把 iPhone/iPad PWA 当作原生 ReplayKit Broadcast Upload Extension 的替代品。
 

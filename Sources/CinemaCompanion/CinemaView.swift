@@ -28,6 +28,8 @@ public struct CinemaView: View {
     @State private var picker = false
     @State private var subtitlesPicker = false
     @State private var sending = false
+    @State private var timedWatching = false
+    @State private var intervalSeconds = 30
     @State private var reply = ""
     @State private var error = ""
     public init(broadcastExtensionID: String? = nil, onScene: @escaping OnScene) {
@@ -57,12 +59,27 @@ public struct CinemaView: View {
                         Button("Share this scene") { Task { await shareMovie() } }.disabled(!movie.loaded || sending)
                     }
                 }
+                Section("Timed watching") {
+                    HStack {
+                        Text("Interval")
+                        Spacer()
+                        TextField("Seconds", value: $intervalSeconds, format: .number)
+                            .keyboardType(.numberPad).multilineTextAlignment(.trailing).frame(width: 80)
+                            .accessibilityLabel("Interval in seconds")
+                        Text("seconds").foregroundStyle(.secondary)
+                    }.disabled(timedWatching)
+                    Button(timedWatching ? "Stop timed watching" : "Start timed watching") {
+                        timedWatching.toggle()
+                    }.disabled(!timedWatching && (!(5...3600).contains(intervalSeconds) || (mode == 0 ? !screen.active : !movie.loaded)))
+                    Text("Choose 5–3600 seconds. Shares only while this page is active; the next interval starts after the previous share finishes.")
+                        .font(.footnote).foregroundStyle(.secondary)
+                }
                 if sending { ProgressView("Sharing…") }
                 if !reply.isEmpty { Section("Reply") { Text(reply).textSelection(.enabled) } }
                 if !error.isEmpty { Section { Text(error).foregroundStyle(.red) } }
             }.navigationTitle("Cinema")
                 .fileImporter(isPresented: $picker, allowedContentTypes: [.movie, .video]) { result in
-                    do { try movie.open(result.get()); error = "" } catch { self.error = error.localizedDescription }
+                    do { let url = try result.get(); timedWatching = false; try movie.open(url); error = "" } catch { self.error = error.localizedDescription }
                 }
                 .fileImporter(isPresented: $subtitlesPicker, allowedContentTypes: [.plainText, .data]) { result in
                     do {
@@ -73,8 +90,23 @@ public struct CinemaView: View {
                         movie.cues = cues; error = ""
                     } catch { self.error = error.localizedDescription }
                 }
-                .onChange(of: phase) { newPhase in if newPhase != .active { screen.stop(); movie.player.pause() } }
-                .onDisappear { screen.stop(); movie.close() }
+                .task(id: timedWatching) {
+                    guard timedWatching else { return }
+                    while timedWatching && !Task.isCancelled {
+                        do { try await Task.sleep(nanoseconds: UInt64(intervalSeconds) * 1_000_000_000) } catch { return }
+                        guard timedWatching && phase == .active && !Task.isCancelled else { return }
+                        if sending { continue }
+                        if mode == 0 {
+                            guard screen.active else { timedWatching = false; return }
+                            await shareScreen()
+                        } else if movie.loaded && movie.player.timeControlStatus == .playing {
+                            await shareMovie()
+                        }
+                    }
+                }
+                .onChange(of: mode) { _ in timedWatching = false }
+                .onChange(of: phase) { newPhase in if newPhase != .active { timedWatching = false; screen.stop(); movie.player.pause() } }
+                .onDisappear { timedWatching = false; screen.stop(); movie.close() }
         }
     }
     private func deliver(_ scene: SharedScene) async {

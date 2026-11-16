@@ -45,7 +45,7 @@
             Import SRT/VTT
             <input id="file-subtitles" type="file" accept=".srt,.vtt,text/plain,text/vtt" hidden />
           </label>
-          <button id="share-movie" disabled>Share current frame</button>
+          <button id="share-movie" disabled>Look at this moment</button>
         </div>
 
         <div class="url-loader">
@@ -71,7 +71,7 @@
         <video id="screen-video" class="screen-preview" muted autoplay playsinline hidden></video>
         <div class="controls wrap">
           <button id="screen-start" class="primary" disabled>Start screen share</button>
-          <button id="share-screen" disabled>Share current screen</button>
+          <button id="share-screen" disabled>Look at this moment</button>
           <button id="screen-stop" class="secondary" disabled>Stop</button>
         </div>
         <p class="fineprint">Screen capture depends on the browser. iPhone and iPad web apps must not be presented as a replacement for a native ReplayKit broadcast extension.</p>
@@ -100,11 +100,17 @@
               <option value="10">Every 10 seconds</option>
               <option value="30">Every 30 seconds</option>
               <option value="60">Every 1 minute</option>
+              <option value="custom">Custom interval…</option>
             </select>
+          </label>
+          <label id="custom-interval-wrap" hidden>
+            <span>Custom interval (seconds)</span>
+            <input id="custom-interval" type="number" inputmode="numeric" min="5" max="3600" step="1" value="15" />
           </label>
           <button id="auto-toggle" class="primary" disabled>Start timed watching</button>
         </div>
         <p id="auto-state" class="fineprint">Timed watching is off. Share a frame manually whenever you want.</p>
+        <p class="fineprint">Custom intervals: 5–3600 seconds. The next timer starts after the previous share finishes. Manual sharing works even when timed watching is off.</p>
       </section>
 
       <section class="card output-card">

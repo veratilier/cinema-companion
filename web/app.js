@@ -25,6 +25,8 @@ const elements = {
   install: byID("install"),
   autoSource: byID("auto-source"),
   autoInterval: byID("auto-interval"),
+  customInterval: byID("custom-interval"),
+  customIntervalWrap: byID("custom-interval-wrap"),
   autoToggle: byID("auto-toggle"),
   autoState: byID("auto-state"),
 };
@@ -35,12 +37,14 @@ const state = {
   screenStream: null,
   previewURL: null,
   deferredInstall: null,
+  sharing: false,
   autoWatch: {
     active: false,
     timer: null,
     source: "movie",
     interval: 0,
     lastMoviePosition: null,
+    generation: 0,
   },
 };
 
@@ -51,6 +55,10 @@ function setStatus(message, kind = "") {
 
 function setMovieSource(source, title) {
   stopAutoWatch("Timed watching stopped because the movie changed.");
+  state.cues = [];
+  elements.fileSubtitles.value = "";
+  elements.subtitleState.textContent = "No subtitles loaded";
+  elements.subtitleNow.textContent = "No active subtitle";
   if (state.localURL) {
     URL.revokeObjectURL(state.localURL);
     state.localURL = null;
@@ -63,7 +71,7 @@ function setMovieSource(source, title) {
   elements.movieTitle.textContent = title;
   elements.movieEmpty.hidden = true;
   elements.movie.hidden = false;
-  elements.shareMovie.disabled = false;
+  updateShareControls();
 }
 
 elements.fileVideo.addEventListener("change", (event) => {
@@ -165,22 +173,24 @@ async function deliver(scene) {
   window.dispatchEvent(new CustomEvent("cinema-companion-scene", { detail: scene }));
   if (typeof handler !== "function") {
     elements.reply.textContent = "Scene captured locally. Add a host adapter to send it to your AI.";
-    return;
+    return false;
   }
 
   const result = await handler(scene);
   elements.reply.textContent = typeof result === "string" ? result : "";
+  return true;
 }
 
 async function share(source) {
-  const button = source === "movie" ? elements.shareMovie : elements.shareScreen;
-  button.disabled = true;
+  if (state.sharing) return;
+  state.sharing = true;
+  updateShareControls();
   setStatus("Preparing scene…");
   try {
     const video = source === "movie" ? elements.movie : elements.screenVideo;
     const jpeg = await captureFrame(video, source === "movie" ? 0.82 : 0.68);
     const position = source === "movie" ? Math.max(0, elements.movie.currentTime) : null;
-    await deliver({
+    const sent = await deliver({
       source,
       jpeg,
       capturedAt: new Date().toISOString(),
@@ -188,13 +198,19 @@ async function share(source) {
       position,
       subtitles: source === "movie" ? subtitlesThrough(position, state.cues) : [],
     });
-    setStatus("Scene shared with the host adapter.", "success");
+    setStatus(sent ? "Scene shared with the host adapter." : "Scene captured locally; no host adapter is connected.", sent ? "success" : "");
   } catch (error) {
     const corsHint = error?.name === "SecurityError" ? " The media server must allow CORS for frame capture." : "";
     setStatus(`${error.message || "Unable to share this frame."}${corsHint}`, "error");
   } finally {
-    button.disabled = source === "screen" ? !state.screenStream : false;
+    state.sharing = false;
+    updateShareControls();
   }
+}
+
+function updateShareControls() {
+  elements.shareMovie.disabled = state.sharing || !elements.movie.src;
+  elements.shareScreen.disabled = state.sharing || !state.screenStream;
 }
 
 elements.shareMovie.addEventListener("click", () => share("movie"));
@@ -231,7 +247,7 @@ elements.screenStart.addEventListener("click", async () => {
     stream.getVideoTracks()[0]?.addEventListener("ended", stopScreenShare, { once: true });
     elements.screenStart.disabled = true;
     elements.screenStop.disabled = false;
-    elements.shareScreen.disabled = false;
+    updateShareControls();
     setStatus("Screen sharing started.", "success");
   } catch (error) {
     stopScreenShare();
@@ -242,7 +258,10 @@ elements.screenStart.addEventListener("click", async () => {
 elements.screenStop.addEventListener("click", stopScreenShare);
 
 function updateAutoControls() {
-  const interval = normalizeWatchInterval(elements.autoInterval.value);
+  const custom = elements.autoInterval.value === "custom";
+  const interval = normalizeWatchInterval(custom ? elements.customInterval.value : elements.autoInterval.value);
+  elements.customIntervalWrap.hidden = !custom;
+  elements.customInterval.disabled = state.autoWatch.active;
   elements.autoToggle.disabled = !state.autoWatch.active && interval === 0;
   elements.autoToggle.textContent = state.autoWatch.active ? "Stop timed watching" : "Start timed watching";
   elements.autoSource.disabled = state.autoWatch.active;
@@ -253,6 +272,7 @@ function stopAutoWatch(message = "Timed watching is off. Share a frame manually 
   if (state.autoWatch.timer) clearTimeout(state.autoWatch.timer);
   state.autoWatch.timer = null;
   state.autoWatch.active = false;
+  state.autoWatch.generation++;
   state.autoWatch.lastMoviePosition = null;
   if (elements.autoState) elements.autoState.textContent = message;
   if (elements.autoToggle) updateAutoControls();
@@ -267,6 +287,7 @@ function scheduleAutoWatch() {
 async function runAutoWatch() {
   state.autoWatch.timer = null;
   if (!state.autoWatch.active) return;
+  const generation = state.autoWatch.generation;
   if (document.hidden) {
     stopAutoWatch("Timed watching stopped when the PWA left the foreground.");
     return;
@@ -294,17 +315,18 @@ async function runAutoWatch() {
   }
 
   await share(source);
-  scheduleAutoWatch();
+  if (state.autoWatch.active && state.autoWatch.generation === generation) scheduleAutoWatch();
 }
 
 elements.autoInterval.addEventListener("change", updateAutoControls);
+elements.customInterval.addEventListener("input", updateAutoControls);
 elements.autoToggle.addEventListener("click", async () => {
   if (state.autoWatch.active) {
     stopAutoWatch();
     return;
   }
 
-  const interval = normalizeWatchInterval(elements.autoInterval.value);
+  const interval = normalizeWatchInterval(elements.autoInterval.value === "custom" ? elements.customInterval.value : elements.autoInterval.value);
   const source = elements.autoSource.value;
   if (!interval) return;
   if (source === "movie" && (!elements.movie.src || elements.movie.readyState < HTMLMediaElement.HAVE_METADATA)) {
